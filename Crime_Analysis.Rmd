@@ -1,0 +1,389 @@
+---
+title: "Chicago Crime Dataset Analysis"
+author: "Ayomide Abel Adeboyejo"
+date: "2024-12-12"
+output:
+  html_document:
+    toc: true
+    theme: cosmo
+    self_contained: true
+    code_folding: hide
+    css: styles.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd("C:/Users/Ayomide/Documents/BSB/GGPLOT & Rmarkdown/Directory for GGPLOT & R.Markdown/Crime_Project")
+
+```
+
+
+#  {.tabset}
+
+![](https://offloadmedia.feverup.com/secretchicago.com/wp-content/uploads/2023/01/13045819/Chicago-1-1024x598.jpg)
+
+
+## <span style="color: rgb(221,72,20);">Introduction</span>
+
+ **Introduction**
+ 
+ This report analyzes crime trends in Chicago from 2020 to 2024 using publicly available data. The focus is on identifying trends in crime categories, geographic distribution, arrest patterns, and temporal variations. The findings aim to provide actionable insights for policymakers and law enforcement agencies.
+ 
+ **Probelem Statement**
+ 
+ Despite significant efforts by law enforcement agencies and policymakers, crime rates in Chicago continue to fluctuate across various categories and geographic areas, particularly between 2020 and 2024. This inconsistency makes it challenging to identify actionable patterns, assess the effectiveness of arrests, and predict future crime trends. Furthermore, the lack of advanced analytical techniques in decision-making processes leaves critical insights into crime dynamics, such as influencing factors and high-risk zones, unexplored. This hampers the development of targeted interventions and resource allocation strategies to reduce crime and improve public safety effectively.
+ 
+## <span style="color: rgb(221,72,20);">Data Life Cycle</span>
+
+```{r load_and_cleaning,  echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(leaflet)
+library(tidyr)
+library(readr)
+library(RMariaDB)
+
+# Load the dataset
+crime_data <- read_csv("Crimes_2001_to_Present_20241212.csv")
+
+# View the first few rows
+head(crime_data)
+
+# Get dataset summary
+summary(crime_data)
+
+# Convert Date to proper format and filter for 2020-2024
+crime_data <- crime_data %>%
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y")) %>%
+  filter(Date >= as.Date("2020-01-01") & Date <= as.Date("2024-12-10"))
+
+# Check for missing values
+sum(is.na(crime_data))
+
+# Remove rows with missing critical fields 
+crime_data <- crime_data %>%
+  drop_na(Date, `Primary Type`, Latitude, Longitude)
+
+
+# Add year and month columns for temporal analysis
+crime_data <- crime_data %>%
+  mutate(Year = year(Date), Month = month(Date, label = TRUE))
+
+# Preview cleaned data
+glimpse(crime_data)
+
+
+```
+
+
+The data lifecycle for this analysis involves several stages:
+
+ **Data Collection**:
+    The dataset was sourced from the Chicago Police Department's publicly available crime records. This data includes records of reported crimes from 2020 to 2024.
+
+ **Data Preparation**:
+    The raw data was preprocessed to remove irrelevant or incomplete records. Key steps included filtering for the years 2020–2024, handling missing values, and creating derived columns such as `Year` and `Month`.
+
+ **Data Analysis**:
+    The prepared data was analyzed to identify trends, patterns, and relationships. This step included calculating descriptive statistics, grouping data, and visualizing trends.
+
+ **Data Visualization**:
+    Charts, maps, and visual summaries were created to represent crime trends, arrest patterns, and geographic distributions.
+
+ **Insights and Reporting**:
+    The results were synthesized into actionable insights, with visualizations and narratives provided in this RMarkdown report.
+
+ **Key Columns for Analysis**
+
+The following columns from the dataset were identified as critical for the analysis:
+
+  + Date
+
+  + Primary Type
+   
+  + Arrest
+   
+  + Domestic
+  
+  + Community Area
+
+  + Latitude/Longitude
+  
+
+  + Location.Description
+   
+
+## <span style="color: rgb(221,72,20);">Visualizations</span> {.tabset}
+
+### **Exploratory Data Analysis** 
+
+
+```{r Yearly_crime_trend, echo=FALSE, warning=FALSE, message=FALSE}
+# Calculate total crimes per year
+yearly_crime <- crime_data %>%
+  group_by(Year) %>%
+  summarise(Total_Crimes = n())
+
+# Visualize yearly crime trends with subtitle and style adjustments
+ggplot(yearly_crime, aes(x = Year, y = Total_Crimes)) +
+  geom_line(color = "darkgreen", size = 1) + 
+  geom_point(color = "red", size = 2) +
+  labs(
+    title = "Yearly Crime Trends (2020-2024)",
+    subtitle = "A look at total reported crimes over the last five years", 
+    x = "Year",
+    y = "Total Crimes"
+  ) +
+  theme_minimal() + # Minimal theme for cleaner aesthetics
+  theme(
+    panel.grid = element_blank(), # Remove gridlines
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5), # Style for title
+    plot.subtitle = element_text(size = 9, face = "italic", hjust = 0.5, margin = margin(t = 5, b = 10)), # Style for subtitle
+    axis.text.y = element_text(size = 9), 
+    axis.text.x = element_text(size = 9)  
+  )
+
+
+
+```
+
+```{r Predict_total_crimes_based_on_arrest_type, echo=FALSE, warning=FALSE, message=FALSE}
+# Aggregate data by year for regression
+crime_yearly <- crime_data %>%
+  group_by(Year) %>%
+  summarise(Total_Crimes = n(), Arrests = sum(Arrest, na.rm = TRUE)) %>%
+  mutate(Arrest_Rate = Arrests / Total_Crimes)
+
+# Linear regression: Predict total crimes based on arrest rate
+crime_model <- lm(Total_Crimes ~ Arrest_Rate, data = crime_yearly)
+
+# Extract regression equation
+regression_eq <- paste0(
+  "y = ", round(coef(crime_model)[1], 2), 
+  " + ", round(coef(crime_model)[2], 2), "x"
+)
+
+# Visualize regression
+ggplot(crime_yearly, aes(x = Arrest_Rate, y = Total_Crimes)) +
+  geom_point(size = 3, color = "darkred") +
+  geom_smooth(method = "lm", color = "blue", se = TRUE) +
+  labs(
+    title = "Relationship Between Arrest Rate and Total Crimes",
+    subtitle = paste("Linear regression model showing the impact of arrest rates on total crimes.\nRegression Equation: ", regression_eq),
+    x = "Arrest Rate",
+    y = "Total Crimes"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 10, face = "italic", hjust = 0.5, margin = margin(t = 10, b = 10)),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 12)
+  )
+
+
+```
+
+
+```{r Most_common_crime_types, echo=FALSE, warning=FALSE, message=FALSE}
+# Summarize crimes by type
+crime_types <- crime_data %>%
+  group_by(`Primary Type`) %>%
+  summarise(Total = n()) %>%
+  arrange(desc(Total))
+
+# Bar plot of top 10 crime types with subtitle and style adjustments
+ggplot(crime_types[1:10, ], aes(x = reorder(`Primary Type`, -Total), y = Total)) +
+  geom_bar(stat = "identity", fill = "darkblue") + 
+  coord_flip() +
+  labs(
+    title = "Top 10 Crime Types (2020-2024)",
+    subtitle = "An overview of the most frequently reported crimes in Chicago", 
+    x = "Crime Type",
+    y = "Total Crimes"
+  ) +
+  theme_minimal() +
+  theme(
+    panel.grid = element_blank(), # Remove gridlines
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 9, face = "italic", hjust = 0.5, margin = margin(t = 5, b = 10)), # Style for subtitle
+    axis.text.y = element_text(size = 9), 
+    axis.text.x = element_text(size = 9)  
+  )
+
+
+```
+
+### **Geographic Analysis**
+
+```{r Crime_hotspots, echo=FALSE, warning=FALSE, message=FALSE}
+crime_2023_sample <- crime_data %>%
+  filter(Year == 2023) %>%
+  sample_n(10000)
+
+# Create a clustered leaflet map for 2023 with a title and subtitle
+leaflet(data = crime_2023_sample) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~Longitude, ~Latitude,
+    clusterOptions = markerClusterOptions(), 
+    popup = ~paste(
+      "Type:", `Primary Type`, 
+      "<br>Location:", `Location Description`
+    ),
+    color = "red", 
+    opacity = 0.7
+  ) %>%
+  setView(
+    lng = mean(crime_2023_sample$Longitude, na.rm = TRUE),
+    lat = mean(crime_2023_sample$Latitude, na.rm = TRUE),
+    zoom = 12
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    colors = c("red"),
+    labels = c("2023"),
+    title = "Year"
+  ) %>%
+  # Add title and subtitle using addControl()
+  addControl(
+    html = "<h3 style='color:red;'>Crime Hotspots in 2023</h3>
+            <p style='color:gray;'>A clustered visualization of reported crimes in Chicago for the year 2023.</p>",
+    position = "topright"
+  )
+
+
+```
+
+```{r Crime_Area, echo=FALSE, warning=FALSE, message=FALSE}
+# Filter data for 2024 and sample 10,000 points
+crime_2024_sample <- crime_data %>%
+  filter(Year == 2024) %>%
+  sample_n(10000)
+
+
+# Create a clustered leaflet map for 2024 with a title and enhanced subtitle
+leaflet(data = crime_2024_sample) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~Longitude, ~Latitude,
+    clusterOptions = markerClusterOptions(), 
+    popup = ~paste(
+      "Type:", `Primary Type`, 
+      "<br>Location:", `Location Description`
+    ),
+    color = "blue", 
+    opacity = 0.7
+  ) %>%
+  setView(
+    lng = mean(crime_2024_sample$Longitude, na.rm = TRUE),
+    lat = mean(crime_2024_sample$Latitude, na.rm = TRUE),
+    zoom = 12
+  ) %>%
+  addLegend(
+    position = "bottomright",
+    colors = c("blue"),
+    labels = c("2024"),
+    title = "Year"
+  ) %>%
+  # Add title and subtitle using addControl()
+  addControl(
+    html = "<h3 style='color:blue;'>Crime Hotspots in 2024</h3>
+            <p style='color:gray;'>A detailed visualization of crime distribution, uncovering areas with the highest incident density in Chicago for 2024.</p>",
+    position = "topright"
+  )
+
+
+
+
+```
+
+### **Advanced Analysis**
+
+```{r Arrest_trends, echo=FALSE, warning=FALSE, message=FALSE}
+
+# Analyze arrest rates over years
+arrest_rates <- crime_data %>%
+  group_by(Year) %>%
+  summarise(
+    Total_Arrests = sum(Arrest == TRUE),
+    Total_Crimes = n(),
+    Arrest_Rate = Total_Arrests / Total_Crimes
+  )
+
+# Visualize arrest rates with subtitle and style adjustments
+ggplot(arrest_rates, aes(x = Year, y = Arrest_Rate)) +
+  geom_bar(stat = "identity", fill = "darkgreen") + 
+  labs(
+    title = "Arrest Rates by Year (2020-2024)",
+    subtitle = "An analysis of yearly trends in arrest rates", 
+    x = "Year",
+    y = "Arrest Rate"
+  ) +
+  theme_minimal() + 
+  theme(
+    panel.grid = element_blank(), 
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 7, face = "italic", hjust = 0.5, margin = margin(t = 5, b = 10)), # Style for subtitle
+    axis.text.y = element_text(size = 9), 
+    axis.text.x = element_text(size = 9)  
+  )
+
+
+
+```
+
+```{r Domestic_crime_trends, echo=FALSE, warning=FALSE, message=FALSE}
+# Filter for domestic crimes
+domestic_crime <- crime_data %>%
+  filter(Domestic == TRUE) %>%
+  group_by(Year) %>%
+  summarise(Total_Domestic = n())
+
+# Line plot for domestic crimes with subtitle and style adjustments
+ggplot(domestic_crime, aes(x = Year, y = Total_Domestic)) +
+  geom_line(color = "purple", size = 1) + 
+  geom_point(color = "orange", size = 2) + 
+  labs(
+    title = "Domestic Crimes Trend (2020-2024)",
+    subtitle = "Yearly trends in domestic crime cases across Chicago", 
+    x = "Year",
+    y = "Number of Domestic Crimes"
+  ) +
+  theme_minimal() + # Minimal theme for cleaner aesthetics
+  theme(
+    panel.grid = element_blank(), 
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5), 
+    plot.subtitle = element_text(size = 7, face = "italic", hjust = 0.5, margin = margin(t = 5, b = 10)), # Style for subtitle
+    axis.text.y = element_text(size = 9), 
+    axis.text.x = element_text(size = 9)  
+  )
+
+
+
+```
+
+## <span style="color: rgb(221,72,20);"> Conclusion</span>
+
+**Conclusion**
+
+The analysis of Chicago's crime data from 2020 to 2024 revealed that theft and assault were the most common crimes, with significant concentrations in specific urban hotspots. Temporal trends showed seasonal variations, and domestic crimes remained a critical concern. Despite efforts, arrest rates for certain crimes were low, indicating the need for enhanced investigative strategies. Geographic maps highlighted key areas requiring targeted interventions, and year-over-year fluctuations suggested the influence of socio-economic factors and public policy.
+
+## <span style="color: rgb(221,72,20);"> Recommendations</span>
+
+**Recommendations**
+
+- Focus law enforcement resources on identified crime hotspots and deploy predictive analytics for proactive interventions.
+- Implement seasonal crime reduction strategies during months with historically high crime rates.
+- Enhance investigative capabilities and use advanced technology to improve arrest rates, particularly for unsolved crimes.
+- Collaborate with social services and launch community outreach programs to address domestic violence.
+- Strengthen community policing initiatives to foster trust, encourage reporting, and engage neighborhoods in crime prevention efforts.
+
+**References**
+
+<a href="https://data.cityofchicago.org/Public-Safety/Crimes-2001-to-Present/ijzp-q8t2/about_data" style="color:rgb(221,72,20);">Exploring Chicago Crime Trends: Comprehensive Dataset of Reported Crimes (2001 to Present)</a>
+
+
